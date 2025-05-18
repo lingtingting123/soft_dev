@@ -1,6 +1,0 @@
-[submodule "react-vite-realworld-example-app"]
-	path = react-vite-realworld-example-app
-	url = https://github.com/lingtingting123/soft_dev.git
-[submodule "realWorld-DjangoRestFramework"]
-	path = realWorld-DjangoRestFramework
-	url = https://github.com/lingtingting123/soft_dev.git
