@@ -1,0 +1,87 @@
+3/24  前端/src/pages/Auth.jsx 第46行，<Link to={isRegister ? '/login' : '/register'}>{isRegister ? 'Have' : 'Need'} an account?</Link>
+3/25 前端/src/hooks/useUserQuery 文件重写
+3/26 前端/src/components/PopularTags.jsx 添加第11-14行，以解决无账号打开界面时偶尔的白屏问题
+3/26 按邓又夫所述，修改 前端Profile.jsx和useProfileQuery.js 后端serializers.py和views.py 文件
+3/26 撤销3/25对useUserQuery.js文件的修改，原因：有更好的解决Setting问题的方法
+3/26 前端/src/pages/Home.jsx文件第32行修改标题名称
+3/26 前端/src/components/Navbar.jsx文件第12行修改导航栏名称
+3/26 前端/src/App.jsx文件第30行与第33行修改描述
+3/26 前端/src/pages/Prodile.jsx
+    const setAuthorFilter = React.useCallback(() => {
+        setFilters({ author: data?.profile?.username, favorited: '' });
+    }, [data?.profile?.username]);
+    React.useEffect(() => {
+        if (data?.profile?.username) {
+            setAuthorFilter();
+        }
+    }, [data?.profile?.username, setAuthorFilter]);
+
+3/28 添加定时功能，具体看《定时功能添加diary》
+    notes: celery -A config worker --loglevel=info --pool=solo
+           celery -A config beat --loglevel=info // 启动celery
+
+3/30 后端/config/settings.py 135行: TIME_ZONE = 'Asia/Shanghai'; 140行: USE_TZ = False
+3/31 后端/articles/serializers.py 在任意位置（最好靠前）添加：
+    def validate_scheduledAt(self, value):  # AI codes 3/31
+        if value == "":
+            return None  # 确保 Django 不会因空字符串报错
+        return value
+3/31 后端/articles/serializers.py 修改create函数：
+    def create(self, validated_data):
+        tags = validated_data.pop('tags')
+        scheduled_at = validated_data.pop('scheduledAt', None) # 3/31
+        article = Article(
+            author=self.context['request'].user,
+            scheduledAt=scheduled_at, # 3/31
+            **validated_data
+        )
+        article.save()
+
+        article.tags.add(*tags)
+        return article
+3/31 后端/articles/views.py 修改create函数的try部分：
+    try:
+            article_data = request.data.get('article')
+
+            # 确保 scheduledAt 为空字符串时转换为 None  3/31
+            if 'scheduledAt' in article_data and article_data['scheduledAt'] == "":
+                article_data['scheduledAt'] = None
+
+            serializer = self.get_serializer(data=article_data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response({"article":serializer.data}, status=status.HTTP_201_CREATED)
+3/31 前端/pages/Auth.jsx 将if (!data.user || !data.user.token) 修改为 if (!data.user) 解决注册问题（有待商榷）
+
+待解决：历史记录：
+        1、前端加入 “History” 按钮 // 修改 Profile.jsx 文件  4/13
+        2、后端/accounts/models.py 添加 recently_viewed_articles = models.ManyToManyField('Article', related_name='viewed_by', blank=True)
+        3、在文章视图 articles/views.py 中添加：
+            def view_article(request, article_id):
+                article = get_object_or_404(Article, id=article_id)
+                # 将当前文章添加到用户最近浏览的文章列表
+                if article in request.user.recently_viewed_articles.all():
+                    request.user.recently_viewed_articles.remove(article)
+                request.user.recently_viewed_articles.add(article)
+                # 继续处理显示文章的逻辑
+            
+            class ClearHistoryView(View):
+                def post(self, request, *args, **kwargs):
+                # 获取登录用户
+                    if not request.user.is_authenticated:
+                        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+                    # 清除用户的浏览历史记录
+                    user = request.user
+
+                    # 清除浏览记录
+                    user.recently_viewed_articles.clear()
+
+                    return JsonResponse({"message": "History cleared successfully."}, status=200)
+        4、在 articles/views.py 中添加路由：
+            urlpatterns = [
+                # 其他路由...
+                path('api/clear-history/', ClearHistoryView.as_view(), name='clear_history'),
+            ]
+        5、数据库迁移
